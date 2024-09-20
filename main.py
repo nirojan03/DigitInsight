@@ -76,4 +76,3 @@ else:
 
 # Footer
 st.write("---")
-st.write("Developed with [Streamlit](https://streamlit.io/)")
