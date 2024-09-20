@@ -1,54 +1,79 @@
+# streamlit_app.py
+
 import streamlit as st
 import tensorflow as tf
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
-import skimage.color as color
+import time
+import matplotlib.pyplot as plt
 
-# Load the trained model
-@st.cache(allow_output_mutation=True)
+# Load the trained CNN model
+#@st.cache(allow_output_mutation=True)
 def load_model():
-    model = tf.keras.models.load_model('colorization_model.h5')
+    model = tf.keras.models.load_model('mnist_cnn_model.h5')
     return model
 
 model = load_model()
 
-# Preprocess the uploaded grayscale image
+# Function to preprocess the uploaded image
 def preprocess_image(image):
-    # Resize image to 32x32 and convert to grayscale
-    image = image.resize((32, 32))
-    image = np.array(image) / 255.0
-    image = image.reshape(1, 32, 32, 1)  # Reshape for model input
-    return image
+    image = ImageOps.grayscale(image)
+    image = image.resize((28, 28))
+    image = ImageOps.invert(image)
+    image_array = np.array(image) / 255.0
+    image_array = image_array.reshape(1, 28, 28, 1)
+    return image_array
 
-# Postprocess the predicted ab channels and convert to RGB
-def postprocess_output(grayscale_input, ab_output):
-    ab_output = ab_output * 128  # Rescale ab channels back to original range
-    grayscale_input = grayscale_input * 100  # Rescale L channel to original range
-    lab_image = np.concatenate((grayscale_input, ab_output), axis=-1)
-    rgb_image = color.lab2rgb(lab_image[0])
-    return rgb_image
+# Sidebar widgets
+st.sidebar.title("Handwritten Digit Recognition")
+st.sidebar.write("Use this app to recognize handwritten digits (0-9) using a CNN model.")
+uploaded_file = st.sidebar.file_uploader("Choose an image...", type=["png", "jpg", "jpeg"])
 
-st.title("Image Colorization App")
+# Input widget for user interaction
+confidence_threshold = st.sidebar.slider("Confidence Threshold", min_value=0.0, max_value=1.0, value=0.5)
 
-st.write("Upload a grayscale image to see it colorized by the model.")
-
-# File uploader for grayscale image
-uploaded_file = st.file_uploader("Choose a grayscale image...", type=["jpg", "png"])
+# Main container
+st.title("Handwritten Digit Recognition App")
+st.write("Upload an image of a handwritten digit, and the app will predict the digit using a CNN model.")
 
 if uploaded_file is not None:
-    # Display the uploaded grayscale image
-    img = Image.open(uploaded_file).convert("L")  # Convert to grayscale
-    st.image(img, caption='Uploaded Grayscale Image', use_column_width=True)
-    
-    # Preprocess the image for the model
-    img_array = preprocess_image(img)
-    
-    # Predict the ab channels using the model
-    with st.spinner('Colorizing...'):
-        predicted_ab = model.predict(img_array)
-    
-    # Convert grayscale + predicted ab to RGB image
-    colorized_image = postprocess_output(img_array[0], predicted_ab[0])
-    
-    # Display the colorized image
-    st.image(colorized_image, caption='Colorized Image', use_column_width=True)
+    # Display uploaded image
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+
+    # Preprocess the image
+    with st.spinner('Processing...'):
+        processed_image = preprocess_image(image)
+        time.sleep(2)  # Simulate processing time
+
+    # Make prediction
+    prediction = model.predict(processed_image)
+    predicted_digit = np.argmax(prediction)
+    confidence = np.max(prediction)
+
+    # Display progress and status updates
+    st.write("Prediction in progress...")
+    progress_bar = st.progress(0)
+    for percent_complete in range(100):
+        time.sleep(0.01)
+        progress_bar.progress(percent_complete + 1)
+
+    if confidence >= confidence_threshold:
+        st.success(f"Predicted digit: {predicted_digit} with confidence: {confidence:.2f}")
+    else:
+        st.warning(f"Prediction confidence ({confidence:.2f}) below the threshold of {confidence_threshold}")
+
+    # Graph to visualize the prediction probabilities
+    st.write("Prediction Probabilities:")
+    fig, ax = plt.subplots()
+    ax.bar(range(10), prediction[0], color='blue')
+    ax.set_xticks(range(10))
+    ax.set_xlabel("Digits")
+    ax.set_ylabel("Probability")
+    st.pyplot(fig)
+else:
+    st.info("Please upload an image to get started.")
+
+# Footer
+st.write("---")
+st.write("Developed with [Streamlit](https://streamlit.io/)")
